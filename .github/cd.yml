@@ -1,0 +1,129 @@
+name: Node.js CD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+
+  build:
+    name: Build Deployment Artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build application
+        run: npm run build --if-present
+
+      - name: Create deployment package
+        run: |
+          mkdir -p deployment
+          cp -r . deployment/
+          rm -rf deployment/.git
+          rm -rf deployment/deployment
+
+      - name: Upload deployment artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nodejs-app-${{ github.sha }}
+          path: deployment/
+
+
+  deploy-dev:
+    name: Deploy to DEV
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: dev
+
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nodejs-app-${{ github.sha }}
+          path: deployment
+
+      - name: Deploy application
+        run: |
+          echo "================================="
+          echo "Deploying application to DEV"
+          echo "Commit: $GITHUB_SHA"
+          echo "================================="
+
+          cd deployment
+
+          npm ci
+
+          nohup npm start > app.log 2>&1 &
+
+          sleep 5
+
+      - name: DEV smoke test
+        run: |
+          echo "Running DEV smoke test"
+
+          curl --fail http://localhost:3000 || exit 1
+
+          echo "DEV deployment successful"
+
+
+  deploy-prod:
+    name: Deploy to PRODUCTION
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+
+    environment:
+      name: prod
+
+    steps:
+      - name: Download deployment artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nodejs-app-${{ github.sha }}
+          path: deployment
+
+      - name: Deploy application
+        run: |
+          echo "================================="
+          echo "Deploying application to PROD"
+          echo "Commit: $GITHUB_SHA"
+          echo "================================="
+
+          cd deployment
+
+          npm ci
+
+          nohup npm start > app.log 2>&1 &
+
+          sleep 5
+
+      - name: PROD smoke test
+        run: |
+          echo "Running PROD smoke test"
+
+          curl --fail http://localhost:3000 || exit 1
+
+          echo "PRODUCTION deployment successful"
