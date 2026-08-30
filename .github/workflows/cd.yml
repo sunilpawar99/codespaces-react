@@ -36,13 +36,17 @@ jobs:
 
       - name: Build application
         run: npm run build --if-present
-
       - name: Create deployment package
         run: |
-          mkdir -p deployment
-          cp -r . deployment/
-          rm -rf deployment/.git
-          rm -rf deployment/deployment
+          mkdir -p /tmp/deployment
+      
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='node_modules' \
+            --exclude='/tmp/deployment' \
+            ./ /tmp/deployment/
+
 
       - name: Upload deployment artifact
         uses: actions/upload-artifact@v4
