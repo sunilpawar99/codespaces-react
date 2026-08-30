@@ -15,10 +15,11 @@ concurrency:
 jobs:
 
   build:
-    name: Build Deployment Artifact
+    name: Build Application
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout source
         uses: actions/checkout@v4
 
@@ -36,23 +37,21 @@ jobs:
 
       - name: Build application
         run: npm run build --if-present
+
       - name: Create deployment package
         run: |
-          mkdir -p /tmp/deployment
-      
-          rsync -a \
+          tar \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='node_modules' \
-            --exclude='/tmp/deployment' \
-            ./ /tmp/deployment/
-
+            -czf nodejs-app.tar.gz .
 
       - name: Upload deployment artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nodejs-app-${{ github.sha }}
-          path: deployment/
+          name: nodejs-app
+          path: nodejs-app.tar.gz
+          if-no-files-found: error
 
 
   deploy-dev:
@@ -64,38 +63,43 @@ jobs:
       name: dev
 
     steps:
+
       - name: Download deployment artifact
         uses: actions/download-artifact@v4
         with:
-          name: nodejs-app-${{ github.sha }}
-          path: deployment
+          name: nodejs-app
+          path: artifact
 
-      - name: Deploy application
+      - name: Extract application
         run: |
-          echo "================================="
-          echo "Deploying application to DEV"
-          echo "Commit: $GITHUB_SHA"
-          echo "================================="
+          mkdir deployment
+          tar -xzf artifact/nodejs-app.tar.gz -C deployment
 
-          cd deployment
+      - name: Install production dependencies
+        working-directory: deployment
+        run: npm ci
 
-          npm ci
-
+      - name: Start application
+        working-directory: deployment
+        run: |
           nohup npm start > app.log 2>&1 &
+          echo $! > app.pid
 
           sleep 5
 
+          cat app.log
+
       - name: DEV smoke test
         run: |
-          echo "Running DEV smoke test"
+          echo "Testing DEV application..."
 
-          curl --fail http://localhost:3000 || exit 1
+          curl --fail http://localhost:3000
 
           echo "DEV deployment successful"
 
 
   deploy-prod:
-    name: Deploy to PRODUCTION
+    name: Deploy to PROD
     needs: deploy-dev
     runs-on: ubuntu-latest
 
@@ -103,31 +107,36 @@ jobs:
       name: prod
 
     steps:
+
       - name: Download deployment artifact
         uses: actions/download-artifact@v4
         with:
-          name: nodejs-app-${{ github.sha }}
-          path: deployment
+          name: nodejs-app
+          path: artifact
 
-      - name: Deploy application
+      - name: Extract application
         run: |
-          echo "================================="
-          echo "Deploying application to PROD"
-          echo "Commit: $GITHUB_SHA"
-          echo "================================="
+          mkdir deployment
+          tar -xzf artifact/nodejs-app.tar.gz -C deployment
 
-          cd deployment
+      - name: Install production dependencies
+        working-directory: deployment
+        run: npm ci
 
-          npm ci
-
+      - name: Start application
+        working-directory: deployment
+        run: |
           nohup npm start > app.log 2>&1 &
+          echo $! > app.pid
 
           sleep 5
 
+          cat app.log
+
       - name: PROD smoke test
         run: |
-          echo "Running PROD smoke test"
+          echo "Testing PROD application..."
 
-          curl --fail http://localhost:3000 || exit 1
+          curl --fail http://localhost:3000
 
           echo "PRODUCTION deployment successful"
