@@ -44,13 +44,13 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             --exclude='node_modules' \
-            -czf nodejs-app.tar.gz .
-
+            -czf /tmp/nodejs-app.tar.gz .
+      
       - name: Upload deployment artifact
         uses: actions/upload-artifact@v4
         with:
           name: nodejs-app
-          path: nodejs-app.tar.gz
+          path: /tmp/nodejs-app.tar.gz
           if-no-files-found: error
 
 
